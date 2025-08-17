@@ -42,7 +42,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			buf = newBuf
 		}
 
-		n, err := reader.Read(buf[readToIndex:])
+		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if err == io.EOF && readToIndex == 0 {
 				request.State = DoneState
@@ -51,15 +51,15 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			return nil, err
 		}
 
-		readToIndex += n
-		readN, err := request.parse(buf[:readToIndex])
+		readToIndex += numBytesRead
+		numBytesParsed, err := request.parse(buf[:readToIndex])
 		if err != nil {
 			return nil, err
 		}
 
-		if readN > 0 {
-			copy(buf, buf[readN:readToIndex])
-			readToIndex -= readN
+		if numBytesParsed > 0 {
+			copy(buf, buf[numBytesParsed:readToIndex])
+			readToIndex -= numBytesParsed
 		}
 	}
 
