@@ -2,6 +2,7 @@ package headers
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -33,7 +34,12 @@ func (h *Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	v = strings.TrimSpace(v)
 
-	(*h)[k] = v
+	regexpKey := regexp.MustCompile(`^[a-zA-Z0-9!#$%&'*+.^_` + "`" + `|~-]+$`)
+	if !regexpKey.MatchString(k) {
+		return 0, false, fmt.Errorf("invalid header key: %s", k)
+	}
+
+	(*h)[strings.ToLower(k)] = v
 
 	return n, false, nil
 }
