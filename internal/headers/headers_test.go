@@ -54,6 +54,22 @@ func TestHeaderParse(t *testing.T) {
 	assert.Equal(t, 0, n)
 	assert.True(t, done)
 
+	// Test: Valid duplicate header
+	headers = NewHeaders()
+	data = []byte("Set-Person: lane-loves-go\r\nSet-Person: prime-loves-zig\r\nSet-Person: tj-loves-ocaml\r\n\r\n")
+
+	n, _, err = headers.Parse(data)
+	require.NoError(t, err)
+	assert.Equal(t, "lane-loves-go", headers["set-person"])
+
+	n2, _, err := headers.Parse(data[n:])
+	require.NoError(t, err)
+	assert.Equal(t, "lane-loves-go, prime-loves-zig", headers["set-person"])
+
+	_, _, err = headers.Parse(data[n+n2:])
+	require.NoError(t, err)
+	assert.Equal(t, "lane-loves-go, prime-loves-zig, tj-loves-ocaml", headers["set-person"])
+
 	// Test: Invalid spacing header
 	headers = NewHeaders()
 	data = []byte("   Host : localhost:42069       \r\n\r\n")

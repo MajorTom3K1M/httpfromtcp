@@ -39,7 +39,11 @@ func (h *Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, fmt.Errorf("invalid header key: %s", k)
 	}
 
-	(*h)[strings.ToLower(k)] = v
+	key := strings.ToLower(k)
+	if prev, ok := (*h)[key]; ok && prev != "" {
+		v = prev + ", " + v
+	}
+	(*h)[key] = v
 
 	return n, false, nil
 }
