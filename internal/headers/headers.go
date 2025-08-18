@@ -1,0 +1,43 @@
+package headers
+
+import (
+	"fmt"
+	"strings"
+)
+
+type Headers map[string]string
+
+func (h *Headers) Parse(data []byte) (n int, done bool, err error) {
+	i := strings.Index(string(data), "\r\n")
+	if i == -1 {
+		return 0, false, fmt.Errorf("invalid header format")
+	}
+
+	headersLine := string(data[:i])
+	n = i + 2
+
+	if headersLine == "" {
+		return 0, true, nil
+	}
+
+	headersLine = strings.TrimSpace(headersLine)
+
+	k, v, ok := strings.Cut(headersLine, ":")
+	if !ok {
+		return 0, false, fmt.Errorf("invalid header format: %s", headersLine)
+	}
+
+	if strings.Contains(k, " ") {
+		return 0, false, fmt.Errorf("invalid header key spacing: %s", k)
+	}
+
+	v = strings.TrimSpace(v)
+
+	(*h)[k] = v
+
+	return n, false, nil
+}
+
+func NewHeaders() Headers {
+	return make(Headers)
+}
