@@ -37,8 +37,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize)
 	readToIndex := 0
 
-	fmt.Println("Starting request parsing...")
-
 	for !request.isDone() {
 		if readToIndex == len(buf) {
 			newBuf := make([]byte, len(buf)*2)
