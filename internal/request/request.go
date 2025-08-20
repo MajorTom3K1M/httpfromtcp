@@ -13,6 +13,7 @@ type Request struct {
 	RequestLine RequestLine
 	Headers     headers.Headers
 	State       RequestState
+	Body        []byte
 }
 
 type RequestLine struct {
