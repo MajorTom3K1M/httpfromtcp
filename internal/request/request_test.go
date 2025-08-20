@@ -187,6 +187,30 @@ func TestRequestLineParse(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, r)
 	assert.Equal(t, "hello world!\n", string(r.Body))
+
+	// Test: JSON Body
+	body := `{"type": "dark mode", "size": "medium"}`
+	raw := fmt.Sprintf(
+		"POST /coffee HTTP/1.1\r\n"+
+			"Host: localhost:42069\r\n"+
+			"Content-Type: application/json\r\n"+
+			"Content-Length: %d\r\n"+
+			"\r\n%s",
+		len(body), body,
+	)
+	r, err = RequestFromReader(strings.NewReader(raw))
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	assert.Equal(t, "POST", r.RequestLine.Method)
+	assert.Equal(t, "/coffee", r.RequestLine.RequestTarget)
+	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+
+	// Your headers API uses lowercase keys (e.g., Get("content-type"))
+	assert.Equal(t, "application/json", r.Headers.Get("content-type"))
+	assert.Equal(t, fmt.Sprintf("%d", len(body)), r.Headers.Get("content-length"))
+
+	assert.Equal(t, []byte(body), r.Body)
 }
 
 func (cr *chunkReader) Read(p []byte) (n int, err error) {
