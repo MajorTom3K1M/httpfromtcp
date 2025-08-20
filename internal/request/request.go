@@ -27,6 +27,7 @@ type RequestState string
 const (
 	InitialState RequestState = "Initial"
 	HeadersState RequestState = "Headers"
+	BodyState    RequestState = "Body"
 	DoneState    RequestState = "Done"
 )
 
@@ -48,7 +49,26 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		}
 
 		numBytesRead, err := reader.Read(buf[readToIndex:])
+		if numBytesRead > 0 {
+			readToIndex += numBytesRead
+		}
+
+		numBytesParsed, pErr := request.parse(buf[:readToIndex])
+		if pErr != nil {
+			return nil, pErr
+		}
+
+		if numBytesParsed > 0 {
+			copy(buf, buf[numBytesParsed:readToIndex])
+			readToIndex -= numBytesParsed
+		}
+
+		if request.isDone() {
+			return request, nil
+		}
+
 		if err != nil {
+			fmt.Printf("Error reading from reader: %v\n", err)
 			if errors.Is(err, io.EOF) {
 				if request.State != DoneState {
 					return nil, fmt.Errorf("incomplete request")
@@ -56,17 +76,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 				break
 			}
 			return nil, err
-		}
-		readToIndex += numBytesRead
-
-		numBytesParsed, err := request.parse(buf[:readToIndex])
-		if err != nil {
-			return nil, err
-		}
-
-		if numBytesParsed > 0 {
-			copy(buf, buf[numBytesParsed:readToIndex])
-			readToIndex -= numBytesParsed
 		}
 
 		if numBytesRead == 0 && numBytesParsed == 0 {
@@ -177,7 +186,7 @@ func (r *Request) parse(data []byte) (int, error) {
 
 			if done {
 				read += n
-				r.State = DoneState
+				r.State = BodyState
 				return read, nil
 			}
 
@@ -186,8 +195,56 @@ func (r *Request) parse(data []byte) (int, error) {
 			}
 
 			read += n
+		case BodyState:
+			fmt.Printf("Reading body, current length: %d, data length: %d\n", len(r.Body), len(data[read:]))
+			if exists := r.Headers.Get("content-length"); exists != "" {
+				contentLength, err := strconv.Atoi(exists)
+				if err != nil {
+					return 0, fmt.Errorf("invalid content-length: %s", exists)
+				}
+
+				need := contentLength - len(r.Body)
+				if need < 0 {
+					return 0, fmt.Errorf("body length exceeds content-length: %d > %d", len(r.Body), contentLength)
+				}
+
+				if need == 0 {
+					fmt.Printf("Content length matches body length, setting state to done\n")
+					r.State = DoneState
+					return read, nil
+				}
+
+				take := len(data[read:])
+				if take == 0 {
+					return read, nil
+				}
+
+				if take > need {
+					take = need
+				}
+
+				r.Body = append(r.Body, data[read:read+take]...)
+				read += take
+
+				if len(r.Body) == contentLength {
+					fmt.Printf("Body length matches content-length, setting state to done\n")
+					r.State = DoneState
+				}
+
+				return read, nil
+			} else {
+				avail := len(data[read:])
+				if avail > 0 {
+					r.Body = append(r.Body, data[read:read+avail]...)
+					read += avail
+					return read, nil
+				}
+
+				r.State = DoneState
+				return read, nil
+			}
 		case DoneState:
-			return read, fmt.Errorf("error: trying to read data in a done state")
+			return read, nil
 		}
 	}
 }

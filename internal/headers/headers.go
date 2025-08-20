@@ -48,6 +48,10 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	return n, false, nil
 }
 
+func (h Headers) Get(key string) string {
+	return h[strings.ToLower(key)]
+}
+
 func NewHeaders() Headers {
 	return make(Headers)
 }
