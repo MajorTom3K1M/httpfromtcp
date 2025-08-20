@@ -1,7 +1,9 @@
 package request
 
 import (
+	"errors"
 	"fmt"
+	"httpfromtcp/internal/headers"
 	"io"
 	"strconv"
 	"strings"
@@ -9,7 +11,8 @@ import (
 
 type Request struct {
 	RequestLine RequestLine
-	State       RequsetState
+	Headers     headers.Headers
+	State       RequestState
 }
 
 type RequestLine struct {
@@ -18,20 +21,23 @@ type RequestLine struct {
 	Method        string
 }
 
-type RequsetState string
+type RequestState string
 
 const (
-	InitialState RequsetState = "Initial"
-	DoneState    RequsetState = "Done"
+	InitialState RequestState = "Initial"
+	HeadersState RequestState = "Headers"
+	DoneState    RequestState = "Done"
 )
 
-const bufferSize = 8
+const bufferSize = 1024
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	request := newRequest()
 
 	buf := make([]byte, bufferSize)
 	readToIndex := 0
+
+	fmt.Println("Starting request parsing...")
 
 	for !request.isDone() {
 		if readToIndex == len(buf) {
@@ -44,14 +50,16 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
-			if err == io.EOF && readToIndex == 0 {
-				request.State = DoneState
+			if errors.Is(err, io.EOF) {
+				if request.State != DoneState {
+					return nil, fmt.Errorf("incomplete request")
+				}
 				break
 			}
 			return nil, err
 		}
-
 		readToIndex += numBytesRead
+
 		numBytesParsed, err := request.parse(buf[:readToIndex])
 		if err != nil {
 			return nil, err
@@ -60,6 +68,10 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		if numBytesParsed > 0 {
 			copy(buf, buf[numBytesParsed:readToIndex])
 			readToIndex -= numBytesParsed
+		}
+
+		if numBytesRead == 0 && numBytesParsed == 0 {
+			return nil, io.ErrNoProgress
 		}
 	}
 
@@ -94,7 +106,7 @@ func parseRequestLine(request string) (*RequestLine, int, error) {
 		Method:        method,
 		RequestTarget: requestTarget,
 		HttpVersion:   cleanedVersion,
-	}, len(request), nil
+	}, len(request[:i]) + len("\r\n"), nil
 }
 
 func parseHTTPVersion(version string) (string, error) {
@@ -140,25 +152,45 @@ func isUppercase(str string) bool {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
-	if r.State == InitialState {
-		requestLine, readN, err := parseRequestLine(string(data))
-		if err != nil {
-			return 0, err
+	read := 0
+
+	for {
+		switch r.State {
+		case InitialState:
+			requestLine, n, err := parseRequestLine(string(data[read:]))
+			if err != nil {
+				return 0, err
+			}
+
+			if n == 0 {
+				return read, nil
+			}
+
+			r.RequestLine = *requestLine
+			r.State = HeadersState
+
+			read += n
+		case HeadersState:
+			n, done, err := r.Headers.Parse(data[read:])
+			if err != nil {
+				return 0, err
+			}
+
+			if done {
+				read += n
+				r.State = DoneState
+				return read, nil
+			}
+
+			if n == 0 {
+				return read, nil
+			}
+
+			read += n
+		case DoneState:
+			return read, fmt.Errorf("error: trying to read data in a done state")
 		}
-
-		if readN == 0 {
-			return 0, nil
-		}
-
-		r.RequestLine = *requestLine
-		r.State = DoneState
-
-		return readN, nil
-	} else if r.State == DoneState {
-		return 0, fmt.Errorf("error: trying to read data in a done state")
 	}
-
-	return 0, fmt.Errorf("error: trying to read unsupported state")
 }
 
 func (r *Request) isDone() bool {
@@ -167,6 +199,7 @@ func (r *Request) isDone() bool {
 
 func newRequest() *Request {
 	return &Request{
-		State: InitialState,
+		Headers: headers.NewHeaders(),
+		State:   InitialState,
 	}
 }

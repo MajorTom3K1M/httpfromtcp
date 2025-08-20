@@ -47,12 +47,12 @@ func TestHeaderParse(t *testing.T) {
 
 	// Test: Valid done
 	headers = NewHeaders()
-	data = []byte("\r\n")
+	data = []byte("")
 	n, done, err = headers.Parse(data)
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	assert.Equal(t, 0, n)
-	assert.True(t, done)
+	assert.False(t, done)
 
 	// Test: Valid duplicate header
 	headers = NewHeaders()

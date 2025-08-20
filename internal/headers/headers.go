@@ -8,17 +8,17 @@ import (
 
 type Headers map[string]string
 
-func (h *Headers) Parse(data []byte) (n int, done bool, err error) {
+func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	i := strings.Index(string(data), "\r\n")
 	if i == -1 {
-		return 0, false, fmt.Errorf("invalid header format")
+		return 0, false, nil
 	}
 
 	headersLine := string(data[:i])
 	n = i + 2
 
-	if headersLine == "" {
-		return 0, true, nil
+	if headersLine == "" || i == 0 {
+		return n, true, nil
 	}
 
 	headersLine = strings.TrimSpace(headersLine)
@@ -40,10 +40,10 @@ func (h *Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	key := strings.ToLower(k)
-	if prev, ok := (*h)[key]; ok && prev != "" {
+	if prev, ok := h[key]; ok && prev != "" {
 		v = prev + ", " + v
 	}
-	(*h)[key] = v
+	h[key] = v
 
 	return n, false, nil
 }
