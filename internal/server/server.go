@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"httpfromtcp/internal/response"
 	"log"
 	"net"
 	"sync"
@@ -94,19 +95,19 @@ func (s *Server) listen() {
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
-	resp := fmt.Sprintln(
-		"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!",
-	)
-
 	bw := bufio.NewWriter(conn)
-	_, err := bw.WriteString(resp)
-	if err != nil {
-		log.Printf("error writing response: %v", err)
+	if err := response.WriteStatusLine(bw, response.OK); err != nil {
+		log.Printf("error writing status line: %v", err)
 		return
 	}
 
-	err = bw.Flush()
-	if err != nil {
+	hdrs := response.GetDefaultHeaders(0)
+	if err := response.WriteHeaders(bw, hdrs); err != nil {
+		log.Printf("error writing headers: %v", err)
+		return
+	}
+
+	if err := bw.Flush(); err != nil {
 		log.Printf("error flushing response: %v", err)
 		return
 	}
