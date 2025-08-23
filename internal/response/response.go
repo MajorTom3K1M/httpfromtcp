@@ -39,9 +39,9 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
 	defaultHeaders := headers.NewHeaders()
-	defaultHeaders["Content-Length"] = strconv.Itoa(contentLen)
-	defaultHeaders["Connection"] = "Close"
-	defaultHeaders["Content-Type"] = "text/plain"
+	defaultHeaders.Set("Content-Length", strconv.Itoa(contentLen))
+	defaultHeaders.Set("Connection", "Close")
+	defaultHeaders.Set("Content-Type", "text/plain")
 
 	return defaultHeaders
 }

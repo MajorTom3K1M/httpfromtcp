@@ -98,3 +98,40 @@ func (w *Writer) WriteBody(body []byte) (int, error) {
 
 	return 0, nil
 }
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.State != WriterStateBody {
+		return 0, fmt.Errorf("cannot write chunked body in state: %s", w.State)
+	}
+
+	chunkSize := fmt.Sprintf("%x\r\n", len(p))
+	if _, err := w.bw.WriteString(chunkSize); err != nil {
+		return 0, fmt.Errorf("error writing chunk size: %v", err)
+	}
+
+	if _, err := w.bw.Write(p); err != nil {
+		return 0, fmt.Errorf("error writing chunk data: %v", err)
+	}
+
+	if _, err := w.bw.WriteString("\r\n"); err != nil {
+		return 0, fmt.Errorf("error writing chunk terminator: %v", err)
+	}
+
+	return 0, nil
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	if w.State != WriterStateBody {
+		return 0, fmt.Errorf("cannot write chunked body done in state: %s", w.State)
+	}
+
+	if _, err := w.bw.WriteString("0\r\n\r\n"); err != nil {
+		return 0, fmt.Errorf("error writing final chunk: %v", err)
+	}
+
+	if err := w.bw.Flush(); err != nil {
+		return 0, fmt.Errorf("error flushing buffer: %v", err)
+	}
+
+	return 0, nil
+}

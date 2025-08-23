@@ -48,12 +48,25 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	return n, false, nil
 }
 
+func (h Headers) Set(key string, value string) {
+	key = strings.ToLower(key)
+	v, ok := h[key]
+	if ok {
+		value = v + ", " + value
+	}
+	h[key] = value
+}
+
 func (h Headers) Get(key string) string {
 	return h[strings.ToLower(key)]
 }
 
 func (h Headers) Override(key, value string) {
 	h[strings.ToLower(key)] = value
+}
+
+func (h Headers) Del(key string) {
+	delete(h, strings.ToLower(key))
 }
 
 func NewHeaders() Headers {

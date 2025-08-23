@@ -1,12 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/internal/server"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 )
 
@@ -28,11 +31,14 @@ func main() {
 }
 
 func handler(w *response.Writer, req *request.Request) {
-	switch req.RequestLine.RequestTarget {
-	case "/yourproblem":
+	path := req.RequestLine.RequestTarget
+	switch {
+	case path == "/yourproblem":
 		handler400(w, req)
-	case "/myproblem":
+	case path == "/myproblem":
 		handler500(w, req)
+	case strings.HasPrefix(path, "/httpbin"):
+		handlerChunked(w, req)
 	default:
 		handler200(w, req)
 	}
@@ -90,4 +96,34 @@ func handler200(w *response.Writer, _ *request.Request) {
 	h.Override("Content-Type", "text/html")
 	w.WriteHeaders(h)
 	w.WriteBody(body)
+}
+
+func handlerChunked(w *response.Writer, req *request.Request) {
+	target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+	resp, err := http.Get("https://httpbin.org/" + target)
+	if err != nil {
+		handler500(w, nil)
+	}
+	defer resp.Body.Close()
+
+	hdrs := response.GetDefaultHeaders(0)
+	hdrs.Del("Content-Length")
+	hdrs.Override("Transfer-Encoding", "chunked")
+
+	w.WriteStatusLine(response.OK)
+	w.WriteHeaders(hdrs)
+
+	respBody := make([]byte, 1024)
+	for {
+		n, err := resp.Body.Read(respBody)
+		if n > 0 {
+			w.WriteChunkedBody(respBody[:n])
+		}
+		if err != nil {
+			fmt.Printf("Finished streaming with error: %v\n", err)
+			break
+		}
+	}
+
+	w.WriteChunkedBodyDone()
 }
