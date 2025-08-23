@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"fmt"
+	"httpfromtcp/internal/headers"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/internal/server"
@@ -109,15 +112,18 @@ func handlerChunked(w *response.Writer, req *request.Request) {
 	hdrs := response.GetDefaultHeaders(0)
 	hdrs.Del("Content-Length")
 	hdrs.Override("Transfer-Encoding", "chunked")
+	hdrs.Override("Trailer", "X-Content-Sha256, X-Content-Length")
 
 	w.WriteStatusLine(response.OK)
 	w.WriteHeaders(hdrs)
 
+	var fullRespBody bytes.Buffer
 	respBody := make([]byte, 1024)
 	for {
 		n, err := resp.Body.Read(respBody)
 		if n > 0 {
 			w.WriteChunkedBody(respBody[:n])
+			fullRespBody.Write(respBody[:n])
 		}
 		if err != nil {
 			fmt.Printf("Finished streaming with error: %v\n", err)
@@ -126,4 +132,13 @@ func handlerChunked(w *response.Writer, req *request.Request) {
 	}
 
 	w.WriteChunkedBodyDone()
+
+	sha256Sum := sha256.Sum256(fullRespBody.Bytes())
+
+	trailerHdrs := headers.Headers{
+		"X-Content-Sha256": fmt.Sprintf("%x", sha256Sum),
+		"X-Content-Length": fmt.Sprintf("%d", fullRespBody.Len()),
+	}
+
+	w.WriteTrailers(trailerHdrs)
 }

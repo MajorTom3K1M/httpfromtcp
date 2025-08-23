@@ -14,6 +14,7 @@ type Writer struct {
 	StartLine string
 	Headers   headers.Headers
 	Body      []byte
+	Trailers  headers.Headers
 	State     WriterState
 	bw        *bufio.Writer
 }
@@ -21,10 +22,11 @@ type Writer struct {
 type WriterState string
 
 const (
-	WriterStateInit    WriterState = "init"
-	WriterStateHeaders WriterState = "headers"
-	WriterStateBody    WriterState = "body"
-	WriterStateDone    WriterState = "done"
+	WriterStateInit     WriterState = "init"
+	WriterStateHeaders  WriterState = "headers"
+	WriterStateBody     WriterState = "body"
+	WriterStateTrailers WriterState = "trailers"
+	WriterStateDone     WriterState = "done"
 )
 
 func NewResponseWriter(w io.Writer) *Writer {
@@ -117,7 +119,7 @@ func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 		return 0, fmt.Errorf("error writing chunk terminator: %v", err)
 	}
 
-	return 0, nil
+	return len(p), nil
 }
 
 func (w *Writer) WriteChunkedBodyDone() (int, error) {
@@ -125,13 +127,53 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 		return 0, fmt.Errorf("cannot write chunked body done in state: %s", w.State)
 	}
 
-	if _, err := w.bw.WriteString("0\r\n\r\n"); err != nil {
+	hasTrailers := w.Headers.Get("Trailer") != ""
+
+	doneBody := "0\r\n"
+	if _, err := w.bw.WriteString(doneBody); err != nil {
 		return 0, fmt.Errorf("error writing final chunk: %v", err)
+	}
+
+	if hasTrailers {
+		w.State = WriterStateTrailers
+		return len(doneBody), nil
+	}
+
+	if _, err := w.bw.WriteString("\r\n"); err != nil {
+		return 0, fmt.Errorf("error writing chunk terminator: %v", err)
 	}
 
 	if err := w.bw.Flush(); err != nil {
 		return 0, fmt.Errorf("error flushing buffer: %v", err)
 	}
 
-	return 0, nil
+	w.State = WriterStateDone
+
+	return len(doneBody) + len("\r\n"), nil
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.State != WriterStateTrailers {
+		return fmt.Errorf("cannot write trailers in state: %s", w.State)
+	}
+
+	w.Trailers = h
+
+	var trailerLines string
+	for key, value := range h {
+		trailerLines += fmt.Sprintf("%s: %s\r\n", key, value)
+	}
+	trailerLines += "\r\n"
+
+	if _, err := w.bw.WriteString(trailerLines); err != nil {
+		return fmt.Errorf("error writing trailers: %v", err)
+	}
+
+	if err := w.bw.Flush(); err != nil {
+		return fmt.Errorf("error flushing buffer: %v", err)
+	}
+
+	w.State = WriterStateDone
+
+	return nil
 }
