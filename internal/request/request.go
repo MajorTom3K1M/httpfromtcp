@@ -195,6 +195,23 @@ func (r *Request) parse(data []byte) (int, error) {
 			}
 
 			read += n
+
+			if clStr := r.Headers.Get("content-length"); clStr != "" {
+				cl, err := strconv.Atoi(clStr)
+				if err != nil || cl < 0 {
+					return 0, fmt.Errorf("invalid content-length: %q", clStr)
+				}
+				if cl == 0 {
+					r.State = DoneState
+					return read, nil
+				}
+
+				r.State = BodyState
+				continue
+			}
+
+			r.State = DoneState
+			return read, nil
 		case BodyState:
 			fmt.Printf("Reading body, current length: %d, data length: %d\n", len(r.Body), len(data[read:]))
 			if exists := r.Headers.Get("content-length"); exists != "" {

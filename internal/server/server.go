@@ -1,8 +1,9 @@
 package server
 
 import (
-	"bufio"
+	"bytes"
 	"fmt"
+	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"log"
 	"net"
@@ -27,7 +28,7 @@ const (
 	ServerStateError   ServerState = "error"
 )
 
-func Serve(port int) (*Server, error) {
+func Serve(port int, handler Handler) (*Server, error) {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
@@ -38,7 +39,7 @@ func Serve(port int) (*Server, error) {
 		Listener: ln,
 		State:    ServerStateRunning,
 	}
-	go s.listen()
+	go s.listen(handler)
 
 	return s, nil
 }
@@ -66,7 +67,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) listen() {
+func (s *Server) listen(handler Handler) {
 	for {
 		conn, err := s.Listener.Accept()
 
@@ -87,29 +88,43 @@ func (s *Server) listen() {
 		s.wg.Add(1)
 		go func(c net.Conn) {
 			defer s.wg.Done()
-			s.handle(c)
+
+			go s.handle(c, handler)
 		}(conn)
 	}
 }
 
-func (s *Server) handle(conn net.Conn) {
+func (s *Server) handle(conn net.Conn, handler Handler) {
 	defer conn.Close()
 
-	bw := bufio.NewWriter(conn)
-	if err := response.WriteStatusLine(bw, response.OK); err != nil {
+	req, err := request.RequestFromReader(conn)
+	if err != nil {
+		WriteErrorResponse(conn, &HandlerError{
+			StatusCode: response.BadRequest,
+			Message:    fmt.Sprintf("error reading request: %v", err),
+		})
+		return
+	}
+
+	var buffer bytes.Buffer
+	if errResp := handler(&buffer, req); errResp != nil {
+		WriteErrorResponse(conn, errResp)
+	}
+
+	hdrs := response.GetDefaultHeaders(len(buffer.Bytes()))
+
+	if err := response.WriteStatusLine(conn, response.OK); err != nil {
 		log.Printf("error writing status line: %v", err)
 		return
 	}
 
-	hdrs := response.GetDefaultHeaders(0)
-	if err := response.WriteHeaders(bw, hdrs); err != nil {
+	if err := response.WriteHeaders(conn, hdrs); err != nil {
 		log.Printf("error writing headers: %v", err)
 		return
 	}
 
-	if err := bw.Flush(); err != nil {
+	fmt.Println()
+	if _, err := conn.Write(buffer.Bytes()); err != nil {
 		log.Printf("error flushing response: %v", err)
-		return
 	}
-
 }
