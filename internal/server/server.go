@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"fmt"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
@@ -13,6 +12,7 @@ import (
 
 type Server struct {
 	Listener net.Listener
+	Handler  Handler
 	State    ServerState
 	Port     int
 	Closed   atomic.Bool
@@ -35,11 +35,12 @@ func Serve(port int, handler Handler) (*Server, error) {
 	}
 
 	s := &Server{
+		Handler:  handler,
 		Port:     port,
 		Listener: ln,
 		State:    ServerStateRunning,
 	}
-	go s.listen(handler)
+	go s.listen()
 
 	return s, nil
 }
@@ -67,7 +68,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) listen(handler Handler) {
+func (s *Server) listen() {
 	for {
 		conn, err := s.Listener.Accept()
 
@@ -89,12 +90,12 @@ func (s *Server) listen(handler Handler) {
 		go func(c net.Conn) {
 			defer s.wg.Done()
 
-			go s.handle(c, handler)
+			go s.handle(c)
 		}(conn)
 	}
 }
 
-func (s *Server) handle(conn net.Conn, handler Handler) {
+func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
 	req, err := request.RequestFromReader(conn)
@@ -106,25 +107,6 @@ func (s *Server) handle(conn net.Conn, handler Handler) {
 		return
 	}
 
-	var buffer bytes.Buffer
-	if errResp := handler(&buffer, req); errResp != nil {
-		WriteErrorResponse(conn, errResp)
-	}
-
-	hdrs := response.GetDefaultHeaders(len(buffer.Bytes()))
-
-	if err := response.WriteStatusLine(conn, response.OK); err != nil {
-		log.Printf("error writing status line: %v", err)
-		return
-	}
-
-	if err := response.WriteHeaders(conn, hdrs); err != nil {
-		log.Printf("error writing headers: %v", err)
-		return
-	}
-
-	fmt.Println()
-	if _, err := conn.Write(buffer.Bytes()); err != nil {
-		log.Printf("error flushing response: %v", err)
-	}
+	writter := response.NewResponseWriter(conn)
+	s.Handler(writter, req)
 }

@@ -12,7 +12,7 @@ type HandlerError struct {
 	Message    string
 }
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request)
 
 func WriteErrorResponse(w io.Writer, err *HandlerError) {
 	if err == nil {
