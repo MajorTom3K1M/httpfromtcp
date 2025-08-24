@@ -40,6 +40,8 @@ func handler(w *response.Writer, req *request.Request) {
 		handler400(w, req)
 	case path == "/myproblem":
 		handler500(w, req)
+	case path == "/video":
+		handlerVideo(w, req)
 	case strings.HasPrefix(path, "/httpbin"):
 		handlerChunked(w, req)
 	default:
@@ -141,4 +143,20 @@ func handlerChunked(w *response.Writer, req *request.Request) {
 	}
 
 	w.WriteTrailers(trailerHdrs)
+}
+
+func handlerVideo(w *response.Writer, req *request.Request) {
+	w.WriteStatusLine(response.OK)
+
+	body, err := os.ReadFile("./assets/vim.mp4")
+	if err != nil {
+		handler500(w, req)
+		return
+	}
+
+	h := response.GetDefaultHeaders(len(body))
+	h.Override("Content-Type", "video/mp4")
+
+	w.WriteHeaders(h)
+	w.WriteBody(body)
 }
